@@ -14,41 +14,6 @@ Data sources include:
 """
 
 import numpy as np
-import xarray as xr
-
-
-def load_netcdf_dataset(filepath):
-    """
-    Load a NetCDF dataset.
-
-    Parameters
-    ----------
-    filepath : str or Path
-        Path to the NetCDF file
-
-    Returns
-    -------
-    xr.Dataset
-        Loaded dataset
-    """
-    return xr.open_dataset(filepath)
-
-
-def load_netcdf_mfdataset(filepaths):
-    """
-    Load multiple NetCDF datasets as a single concatenated dataset.
-
-    Parameters
-    ----------
-    filepaths : list of str or Path
-        Paths to NetCDF files
-
-    Returns
-    -------
-    xr.Dataset
-        Concatenated dataset
-    """
-    return xr.open_mfdataset(filepaths, combine="by_coords")
 
 
 def normalize_coordinate_names(ds, dimension_map=None):
@@ -198,8 +163,6 @@ def calculate_statistics_at_time(ds, time_index=0, percentiles=None):
 
 
 __all__ = [
-    "load_netcdf_dataset",
-    "load_netcdf_mfdataset",
     "normalize_coordinate_names",
     "interpolate_to_common_grid",
     "extract_profile_at_time",

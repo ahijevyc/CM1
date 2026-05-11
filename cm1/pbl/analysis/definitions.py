@@ -13,6 +13,8 @@ analysis software. Users should update these as needed for their analysis.
 import os
 from pathlib import Path
 
+import metpy.constants as const
+
 # ========================================================================
 # Default data paths
 # ========================================================================
@@ -32,35 +34,20 @@ PATHS = {
 }
 
 # ========================================================================
-# Physical constants (SI units)
+# Physical constants — sourced from metpy.constants where available
 # ========================================================================
 
-# Gravitational acceleration (m/s^2)
-GRAVITY = 9.81
+GRAVITY = const.g  # 9.80665 m/s^2
+EARTH_OMEGA = const.omega  # 7.292115e-05 rad/s
+R_DRY = const.Rd  # dry air gas constant (J/(kg·K))
+R_VAPOR = const.Rv  # water vapor gas constant (J/(kg·K))
+CP_DRY = const.Cp_d  # specific heat at constant pressure (J/(kg·K))
+CV_DRY = const.Cv_d  # specific heat at constant volume (J/(kg·K))
+L_VAPORIZATION = const.Lv  # latent heat of vaporization (J/kg)
+L_FUSION = const.Lf  # latent heat of fusion (J/kg)
 
-# Earth's rotation rate (rad/s)
-EARTH_OMEGA = 7.2921e-5
-
-# Dry gas constant for air (J/(kg·K))
-R_DRY = 287.0
-
-# Gas constant for water vapor (J/(kg·K))
-R_VAPOR = 461.5
-
-# Specific heat at constant pressure (J/(kg·K))
-CP_DRY = 1005.0
-
-# Specific heat at constant volume (J/(kg·K))
-CV_DRY = 718.0
-
-# Latent heat of vaporization (J/kg)
-L_VAPORIZATION = 2.501e6
-
-# Latent heat of fusion (J/kg)
-L_FUSION = 3.337e5
-
-# Stefan-Boltzmann constant (W/(m^2·K^4))
-STEFAN_BOLTZMANN = 5.670374419e-8
+# Stefan-Boltzmann constant — not available in metpy.constants
+STEFAN_BOLTZMANN = 5.670374419e-8  # W/(m^2·K^4)
 
 # ========================================================================
 # Plotting defaults
