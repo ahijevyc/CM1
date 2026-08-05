@@ -1,0 +1,28 @@
+Conda environment can be found in the 'conda_env' directory.
+
+Needs to either be installed in the default Conda environment directory, 
+or Conda needs to be informed where to find the environment.
+
+To invoke the correct Conda environment, execute:
+
+	conda activate env_pbl
+
+
+Need to make sure in 'definitions.py' that the base_path is set correctly
+
+Files starting with: 
+
+	- 'read_' are the scripts to read the datasets
+	- 'plot_' are the scripts to produce the plots
+
+
+Currently, these scripts expect to be run at the command line, e.g.:
+
+	python plot_met_hov+prof.py
+
+Plots are currently configured to be placed in a directory ../plots. 
+
+
+Everyone's datasets remain in a 'preliminary' status, so best not to distrubute, 
+and if giving talks, please make sure to mention that what you're discussing
+remains as a 'work in progress'.
