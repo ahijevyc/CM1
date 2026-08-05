@@ -140,10 +140,3 @@ def add_contours_to_hovmoeller(
     )
 
     return cs
-
-
-__all__ = [
-    "create_hovmoeller_plot",
-    "configure_hovmoeller_axes",
-    "add_contours_to_hovmoeller",
-]

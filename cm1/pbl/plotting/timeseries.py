@@ -113,11 +113,3 @@ def format_timeseries_xaxis(ax, time_format="%H:%M", locator=None):
     if locator is not None:
         ax.xaxis.set_major_locator(locator)
     plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
-
-
-__all__ = [
-    "configure_timeseries_axes",
-    "add_timeseries_data",
-    "add_uncertainty_band",
-    "format_timeseries_xaxis",
-]

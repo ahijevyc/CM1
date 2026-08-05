@@ -69,19 +69,3 @@ STATS_DEFAULTS = {
     "percentile": 50,  # Median
     "min_samples": 5,  # Minimum samples for valid statistic
 }
-
-__all__ = [
-    "PATH_BASE",
-    "PATHS",
-    "GRAVITY",
-    "EARTH_OMEGA",
-    "R_DRY",
-    "R_VAPOR",
-    "CP_DRY",
-    "CV_DRY",
-    "L_VAPORIZATION",
-    "L_FUSION",
-    "STEFAN_BOLTZMANN",
-    "PLOT_DEFAULTS",
-    "STATS_DEFAULTS",
-]

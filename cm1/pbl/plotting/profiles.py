@@ -143,10 +143,3 @@ def add_observation_profile(
             elinewidth=0.5,
             fillstyle="none",
         )
-
-
-__all__ = [
-    "configure_profile_axes",
-    "add_resolved_and_sgs_lines",
-    "add_observation_profile",
-]

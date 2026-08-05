@@ -143,11 +143,3 @@ def configure_loglog_axes(ax, xmin=None, xmax=None, ymin=None, ymax=None):
         ax.set_xlim([xmin, xmax])
     if ymin is not None and ymax is not None:
         ax.set_ylim([ymin, ymax])
-
-
-__all__ = [
-    "configure_spectrum_axes",
-    "add_spectrum",
-    "add_inertial_subrange",
-    "configure_loglog_axes",
-]

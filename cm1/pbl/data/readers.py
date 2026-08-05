@@ -160,11 +160,3 @@ def calculate_statistics_at_time(ds, time_index=0, percentiles=None):
         }
 
     return stats
-
-
-__all__ = [
-    "normalize_coordinate_names",
-    "interpolate_to_common_grid",
-    "extract_profile_at_time",
-    "calculate_statistics_at_time",
-]
