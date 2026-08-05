@@ -1,0 +1,1 @@
+/glade/campaign/mmm/dpm/patton/data/reinvest/data/sas/les/ncar-les/patton_sas_stats.nc

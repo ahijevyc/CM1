@@ -69,7 +69,7 @@ def create_hovmoeller_plot(
 
     # Plot
     cf = ax.pcolormesh(
-        time_mesh, height_mesh, data.T, cmap=cmap, vmin=vmin, vmax=vmax, shading="auto"
+        time_mesh, height_mesh, data, cmap=cmap, vmin=vmin, vmax=vmax, shading="auto"
     )
 
     ax.set_xlabel(xlabel, fontsize="medium")
@@ -133,7 +133,7 @@ def add_contours_to_hovmoeller(
     cs = ax.contour(
         time_mesh,
         height_mesh,
-        data.T,
+        data,
         levels=levels,
         colors=colors,
         linewidths=linewidths,
