@@ -1,4 +1,5 @@
 exclude: cm1/shared_by_patton/
+
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
