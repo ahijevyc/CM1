@@ -32,35 +32,12 @@ def extract_ict2(parameter2extract, ict_path_file):
     list
         Values of the extracted parameter
     """
-    # Read the file
+    # For ICT format, the number of header lines is given in the first line
     with open(ict_path_file, "r") as f:
-        ict_contents = f.readlines()
+        n_header_lines = int(f.readline().split(",")[0])
 
-    # Find the header: for ict format, line index of header is given in the first line
-    header_line_ind = -1 + int(ict_contents[0].split(",")[0])
-    file_header_keyword = ict_contents[header_line_ind]
-    file_header_keyword = file_header_keyword.replace(" ,", ",").replace(", ", ",")
-
-    for i in range(len(ict_contents)):
-        ict_contents_squeeze = ict_contents[i].replace(" ,", ",").replace(", ", ",")
-        if ict_contents_squeeze.find(file_header_keyword) != -1:
-            ict_header = ict_contents_squeeze
-            ict_header_lineind = i
-            break
-
-    # Chop off header
-    ict_contents = ict_contents[ict_header_lineind + 1 :]
-    # Chop header into pieces
-    ict_header = ict_header.split(",")
-    # Get the column index for the parameter
-    parameter_index = ict_header.index(parameter2extract)
-
-    # Extract the parameter
-    parameter_temp = []
-    for i in range(len(ict_contents)):
-        parameter_temp.append(float(ict_contents[i].split(",")[parameter_index]))
-
-    return parameter_temp
+    df = pd.read_csv(ict_path_file, skiprows=n_header_lines - 1, skipinitialspace=True)
+    return df[parameter2extract].astype(float).tolist()
 
 
 def extract_ict2_basedate(ict_path_file):
@@ -96,6 +73,35 @@ def extract_ict2_basedate(ict_path_file):
     return basedate_out
 
 
+def _binned_percentile(bounds, raw_bin_value, raw_param, raw_percentile):
+    """
+    Calculate a percentile of ``raw_param`` binned by ``raw_bin_value``.
+
+    Bins are half-open: [bounds[n], bounds[n + 1]).
+
+    Parameters
+    ----------
+    bounds : array_like
+        Bin boundaries
+    raw_bin_value : array_like
+        Values used to assign each sample to a bin
+    raw_param : array_like
+        Parameter values to analyze
+    raw_percentile : float
+        Percentile to compute (0-100)
+
+    Returns
+    -------
+    list
+        Percentile values for each bin
+    """
+    bin_index = pd.cut(
+        raw_bin_value, bins=bounds, right=False, labels=False, include_lowest=True
+    )
+    quantile = pd.Series(raw_param).groupby(bin_index).quantile(raw_percentile / 100)
+    return quantile.reindex(range(len(bounds) - 1)).tolist()
+
+
 def hourly_stats(hour_bounds, raw_hour_of_day, raw_param, raw_percentile):
     """
     Calculate statistics binned by hour of day.
@@ -116,18 +122,7 @@ def hourly_stats(hour_bounds, raw_hour_of_day, raw_param, raw_percentile):
     list
         Percentile values for each hourly bin
     """
-    stat_out = []
-    for n in range(len(hour_bounds) - 1):
-        raw_param_temp = raw_param.copy()
-        raw_param_temp = np.where(
-            (raw_hour_of_day >= hour_bounds[n])
-            & (raw_hour_of_day < hour_bounds[n + 1]),
-            raw_param_temp,
-            np.nan,
-        )
-        stat_out.append(np.nanpercentile(raw_param_temp, raw_percentile))
-
-    return stat_out
+    return _binned_percentile(hour_bounds, raw_hour_of_day, raw_param, raw_percentile)
 
 
 def vertical_stats(height_bounds, raw_height, raw_param, raw_percentile):
@@ -150,17 +145,7 @@ def vertical_stats(height_bounds, raw_height, raw_param, raw_percentile):
     list
         Percentile values for each height bin
     """
-    stat_out = []
-    for n in range(len(height_bounds) - 1):
-        raw_param_temp = raw_param.copy()
-        raw_param_temp = np.where(
-            (raw_height >= height_bounds[n]) & (raw_height < height_bounds[n + 1]),
-            raw_param_temp,
-            np.nan,
-        )
-        stat_out.append(np.nanpercentile(raw_param_temp, raw_percentile))
-
-    return stat_out
+    return _binned_percentile(height_bounds, raw_height, raw_param, raw_percentile)
 
 
 def rolling_average(a, n):
@@ -242,13 +227,8 @@ def tolerant_mean(arrs):
     tuple
         (mean, std) computed across arrays, ignoring masked values
     """
-    lens = [len(i) for i in arrs]
-    arr = np.ma.empty((np.max(lens), len(arrs)))
-    arr.mask = True
-    for idx, arr_item in enumerate(arrs):
-        arr[: len(arr_item), idx] = arr_item
-
-    return arr.mean(axis=-1), arr.std(axis=-1)
+    df = pd.DataFrame({idx: pd.Series(arr_item) for idx, arr_item in enumerate(arrs)})
+    return df.mean(axis="columns").to_numpy(), df.std(axis="columns", ddof=0).to_numpy()
 
 
 def down_sample(x, f=7):
@@ -267,10 +247,7 @@ def down_sample(x, f=7):
     np.ndarray
         Down-sampled data
     """
-    # Pad to a multiple of f, use nan for padding
-    xp = np.r_[x, np.nan + np.zeros((-len(x) % f,))]
-    # Reshape and take mean of chunks
-    return np.nanmean(xp.reshape(-1, f), axis=-1)
+    return pd.Series(x).groupby(np.arange(len(x)) // f).mean().to_numpy()
 
 
 def numpy_fillna(data):
@@ -285,19 +262,10 @@ def numpy_fillna(data):
     Returns
     -------
     np.ndarray
-        Rectangular array with shorter rows padded with zeros
+        Rectangular array with shorter rows padded with NaN
     """
-    # Get lengths of each row
-    lens = np.array([len(i) for i in data])
-
-    # Mask of valid places in each row
-    mask = np.arange(lens.max()) < lens[:, None]
-
-    # Setup output array and fill with data
-    out = np.zeros(mask.shape, dtype=data[0].dtype if data else float)
-    out[mask] = np.concatenate(data)
-
-    return out
+    df = pd.DataFrame({idx: pd.Series(row) for idx, row in enumerate(data)})
+    return df.to_numpy().T
 
 
 __all__ = [
