@@ -27,21 +27,20 @@ Requirements:
 
 import os
 import sys
-import re
 import argparse
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.widgets import Slider, Button
-from netCDF4 import Dataset
 
-
-# --- Fast, Robust Numerical Sorting Helper ---
-def extract_sequence_number(filepath):
-    """Extracts the first sequence of digits in the filename to sort files numerically."""
-    match = re.search(r"(\d+)", os.path.basename(filepath))
-    return int(match.group(1)) if match else 0
+from spectra_core import (
+    extract_sequence_number,
+    format_psd_units,
+    read_grid_info,
+    HorizontalSpectrum,
+    compute_frame_psd,
+)
 
 
 class CM1SpectraAnimator:
@@ -62,7 +61,6 @@ class CM1SpectraAnimator:
         self.pbl_top_km = pbl_top_km
         self.nsmooth = nsmooth
         self.detrend = detrend
-        self.window = window
 
         self.current_idx = 0
         self.playing = False
@@ -80,40 +78,19 @@ class CM1SpectraAnimator:
         print(
             f"Initializing with baseline parameters from: {os.path.basename(self.files[0])}"
         )
-        with Dataset(self.files[0], "r") as ds:
-            self.zh = ds.variables["zh"][:]  # scalar-level heights (km)
-            xh_km = ds.variables["xh"][:]
-            yh_km = ds.variables["yh"][:]
+        grid = read_grid_info(self.files[0], self.var, self.pbl_bot_km, self.pbl_top_km)
+        self.zh = grid.zh
+        self.pbl_mask = grid.pbl_mask
+        self.pbl_levels = grid.pbl_levels
+        self.dx_m = grid.dx_m
+        self.ny, self.nx = grid.ny, grid.nx
+        self.var_units = grid.var_units
+        if abs(grid.dx_m - grid.dy_m) > 0.1:
+            print(
+                f"WARNING: Grid is not strictly isotropic: Δx={grid.dx_m:.1f} m, Δy={grid.dy_m:.1f} m"
+            )
 
-            # Identify PBL levels
-            self.pbl_mask = (self.zh >= self.pbl_bot_km) & (self.zh <= self.pbl_top_km)
-            self.pbl_levels = np.where(self.pbl_mask)[0]
-            if len(self.pbl_levels) == 0:
-                raise ValueError(
-                    f"No scalar levels found between heights of {self.pbl_bot_km} and {self.pbl_top_km} km!"
-                )
-
-            # Compute isotropic grid spacing
-            self.dx_m = float(np.median(np.diff(xh_km))) * 1000.0
-            dy_m = float(np.median(np.diff(yh_km))) * 1000.0
-            if abs(self.dx_m - dy_m) > 0.1:
-                print(
-                    f"WARNING: Grid is not strictly isotropic: Δx={self.dx_m:.1f} m, Δy={dy_m:.1f} m"
-                )
-
-            # Read shape of target variable
-            test_var = ds.variables[self.var]
-            self.ny, self.nx = test_var.shape[2], test_var.shape[3]
-
-            # Read and parse variable units dynamically
-            try:
-                self.var_units = test_var.units.strip()
-            except AttributeError:
-                self.var_units = (
-                    "m/s"  # Default fallback if units attribute doesn't exist
-                )
-
-        self.psd_units_str = self.format_psd_units(self.var_units)
+        self.psd_units_str = format_psd_units(self.var_units)
 
         print(
             f"  Target variable: {self.var} (raw units: {self.var_units} -> PSD units: {self.psd_units_str})"
@@ -125,75 +102,11 @@ class CM1SpectraAnimator:
             f"  Horizontal grid dimensions: {self.nx} × {self.ny} (Δx = {self.dx_m:.0f} m)"
         )
 
-        # 2. Build 2D Window if enabled
-        if self.window:
-            hann_x = np.hanning(self.nx)
-            hann_y = np.hanning(self.ny)
-            self.window2d = np.outer(hann_y, hann_x)
-            self.window2d /= np.sqrt(np.mean(self.window2d**2))
-        else:
-            self.window2d = np.ones((self.ny, self.nx))
-
-        # 3. Setup wavenumber grids
-        self.kx = np.fft.fftshift(np.fft.fftfreq(self.nx, d=self.dx_m))  # cycles / m
-        self.ky = np.fft.fftshift(np.fft.fftfreq(self.ny, d=self.dx_m))
-
-        # Precompute radial bins for azimuthal average
-        self.k_nyq = 0.5 / self.dx_m  # Nyquist frequency
-        self.dk = 1.0 / (self.nx * self.dx_m)  # Fundamental frequency
-        self.k_edges = np.arange(0, self.k_nyq + self.dk, self.dk)
-        self.k_rad = 0.5 * (self.k_edges[:-1] + self.k_edges[1:])  # Center of bins
-
-        # Precompute meshes for digital averaging
-        self.KX, self.KY = np.meshgrid(self.kx, self.ky)
-        self.K_mesh = np.sqrt(self.KX**2 + self.KY**2)
-        self.digitized_indices = np.digitize(self.K_mesh.ravel(), self.k_edges) - 1
-        self.valid_indices = (self.digitized_indices >= 0) & (
-            self.digitized_indices < len(self.k_rad)
-        )
-
-        # Define dynamic bounds for the Kolmogorov reference line based on grid resolution.
-        self.slope_x = np.array([4.0 * self.dx_m, 30.0 * self.dx_m]) / 1000.0
-        self.lambda_anchor = np.sqrt(
-            self.slope_x[0] * self.slope_x[1]
-        )  # geometric mean
-
-    def format_psd_units(self, raw_units):
-        """Derives LaTeX formatting for 1-D PSD units [Var_Units^2 * m]."""
-        u = raw_units.strip()
-        if re.match(r"^m\s*/\s*s$|^m\s*s\s*[-⁻]?1$", u, re.IGNORECASE):
-            return r"m$^3$ s$^{-2}$"
-        elif u.upper() == "K":
-            return r"K$^2$ m"
-        elif re.match(r"^g\s*/\s*kg$|^g\s*kg\s*[-⁻]?1$", u, re.IGNORECASE):
-            return r"(g/kg)$^2$ m"
-        elif re.match(r"^kg\s*/\s*kg$|^kg\s*kg\s*[-⁻]?1$", u, re.IGNORECASE):
-            return r"(kg/kg)$^2$ m"
-        else:
-            return f"({u})$^2$ m"
-
-    def running_mean(self, x, n):
-        """Simple symmetric running mean wrapper."""
-        if n <= 1:
-            return x
-        kernel = np.ones(n) / n
-        return np.convolve(x, kernel, mode="same")
-
-    def azimuthal_average(self, power2d):
-        """Collapses a 2-D power spectrum onto 1-D radial wavenumber bins."""
-        psd1d = np.zeros(len(self.k_rad))
-        count = np.zeros(len(self.k_rad), dtype=int)
-
-        np.add.at(
-            psd1d,
-            self.digitized_indices[self.valid_indices],
-            power2d.ravel()[self.valid_indices],
-        )
-        np.add.at(count, self.digitized_indices[self.valid_indices], 1)
-
-        count = np.where(count == 0, 1, count)
-        psd1d /= count
-        return self.k_rad, psd1d
+        # 2. Build window and radial wavenumber bins for the horizontal spectrum
+        self.spectrum = HorizontalSpectrum(self.nx, self.ny, self.dx_m, window=window)
+        self.k_rad = self.spectrum.k_rad
+        self.slope_x = self.spectrum.slope_x
+        self.lambda_anchor = self.spectrum.lambda_anchor
 
     def get_frame_data(self, idx):
         """Loads variable data from disk and computes horizontal spectra, or loads from cache."""
@@ -207,35 +120,14 @@ class CM1SpectraAnimator:
             flush=True,
         )
 
-        with Dataset(fname, "r") as ds:
-            time_val = float(ds.variables["time"][0])
-            w_all = ds.variables[self.var][0, self.pbl_mask, :, :]  # (nz_pbl, ny, nx)
-
-        psd_stack = []
-        for k in range(len(self.pbl_levels)):
-            w2d = w_all[k, :, :]
-            if self.detrend:
-                w2d = w2d - w2d.mean()
-            w2d = w2d * self.window2d
-
-            # 2D FFT to physical spectral density units
-            W = np.fft.fftshift(np.fft.fft2(w2d)) / (self.nx * self.ny)
-            P2d = (np.abs(W) ** 2) * (self.nx * self.dx_m) * (self.ny * self.dx_m)
-
-            _, psd1d = self.azimuthal_average(P2d)
-            psd_stack.append(psd1d)
-
-        psd_mean = np.mean(psd_stack, axis=0)
-
-        # Filter k > 0
-        nonzero = self.k_rad > 0
-        k_plot = self.k_rad[nonzero]
-        psd_plot = psd_mean[nonzero]
-
-        wavelength_km = (1.0 / k_plot) / 1000.0
-        psd_smooth = self.running_mean(psd_plot, self.nsmooth)
-
-        self.cache[idx] = (wavelength_km, psd_smooth, psd_plot, time_val)
+        self.cache[idx] = compute_frame_psd(
+            fname,
+            self.var,
+            self.pbl_mask,
+            self.spectrum,
+            detrend=self.detrend,
+            nsmooth=self.nsmooth,
+        )
         print("done.")
         return self.cache[idx]
 

@@ -17,7 +17,6 @@ Requirements:
 """
 
 import os
-import re
 import glob
 import argparse
 import numpy as np
@@ -26,24 +25,13 @@ import matplotlib
 # Use Agg backend for headless operation on clusters like Derecho
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from netCDF4 import Dataset
 
-
-# --- Fast, Robust Numerical Sorting Helper ---
-def extract_sequence_number(filepath):
-    """
-    Extracts the sequence of digits right before .nc in the filename,
-    falling back to the first sequence of digits found in the filename.
-    This prevents folder names (like test11) from throwing off file sequence orders.
-    """
-    filename = os.path.basename(filepath)
-    # Search for digits right before the .nc extension
-    match = re.search(r"(\d+)\.nc$", filename)
-    if match:
-        return int(match.group(1))
-    # Fallback to any sequence of digits in the filename
-    match = re.search(r"(\d+)", filename)
-    return int(match.group(1)) if match else 0
+from spectra_core import (
+    extract_sequence_number,
+    read_grid_info,
+    HorizontalSpectrum,
+    compute_frame_psd,
+)
 
 
 def get_sorted_files(directory):
@@ -72,14 +60,6 @@ def get_sorted_files(directory):
     return sorted_list
 
 
-def running_mean(x, n):
-    """Simple symmetric running mean wrapper."""
-    if n <= 1:
-        return x
-    kernel = np.ones(n) / n
-    return np.convolve(x, kernel, mode="same")
-
-
 def compute_max_psd_timeline(
     files, var, pbl_bot_km, pbl_top_km, nsmooth, detrend, window
 ):
@@ -94,97 +74,25 @@ def compute_max_psd_timeline(
     print(f"  Found {num_frames} matching NetCDF files.")
 
     # Initialize parameters using the baseline metadata from the first file
-    with Dataset(files[0], "r") as ds:
-        zh = ds.variables["zh"][:]  # Scalar-level heights (km)
-        xh_km = ds.variables["xh"][:]
+    grid = read_grid_info(files[0], var, pbl_bot_km, pbl_top_km)
 
-        # Identify vertical levels within our specified altitude range
-        pbl_mask = (zh >= pbl_bot_km) & (zh <= pbl_top_km)
-        pbl_levels = np.where(pbl_mask)[0]
-        if len(pbl_levels) == 0:
-            raise ValueError(
-                f"No scalar levels found between heights of {pbl_bot_km} and {pbl_top_km} km!"
-            )
-
-        # Compute horizontal grid resolutions
-        dx_m = float(np.median(np.diff(xh_km))) * 1000.0
-
-        test_var = ds.variables[var]
-        ny, nx = test_var.shape[2], test_var.shape[3]
-
-    print(f"  Grid dimensions: {nx} x {ny} (dx = {dx_m:.1f} m)")
+    print(f"  Grid dimensions: {grid.nx} x {grid.ny} (dx = {grid.dx_m:.1f} m)")
     print(
-        f"  Vertical averaging levels: {len(pbl_levels)} levels in layer {pbl_bot_km:.2f} to {pbl_top_km:.2f} km"
+        f"  Vertical averaging levels: {len(grid.pbl_levels)} levels in layer {pbl_bot_km:.2f} to {pbl_top_km:.2f} km"
     )
 
-    # Build 2D Hanning window normalized to preserve variance
-    if window:
-        hann_x = np.hanning(nx)
-        hann_y = np.hanning(ny)
-        window2d = np.outer(hann_y, hann_x)
-        window2d /= np.sqrt(np.mean(window2d**2))
-    else:
-        window2d = np.ones((ny, nx))
-
-    # Setup wavenumber grids
-    kx = np.fft.fftshift(np.fft.fftfreq(nx, d=dx_m))
-    ky = np.fft.fftshift(np.fft.fftfreq(ny, d=dx_m))
-
-    # Precompute radial bins for azimuthal average
-    k_nyq = 0.5 / dx_m
-    dk = 1.0 / (nx * dx_m)
-    k_edges = np.arange(0, k_nyq + dk, dk)
-    k_rad = 0.5 * (k_edges[:-1] + k_edges[1:])
-
-    KX, KY = np.meshgrid(kx, ky)
-    K_mesh = np.sqrt(KX**2 + KY**2)
-    digitized_indices = np.digitize(K_mesh.ravel(), k_edges) - 1
-    valid_indices = (digitized_indices >= 0) & (digitized_indices < len(k_rad))
+    spectrum = HorizontalSpectrum(grid.nx, grid.ny, grid.dx_m, window=window)
 
     # Lists to store the time series results
     times_min = []
     max_wavelengths_m = []
 
     # Loop through and process each file sequentially
-    for idx, fname in enumerate(files):
+    for fname in files:
         try:
-            with Dataset(fname, "r") as ds:
-                time_val = float(ds.variables["time"][0])
-                w_all = ds.variables[var][0, pbl_mask, :, :]  # (nz_layer, ny, nx)
-
-            psd_stack = []
-            for k in range(len(pbl_levels)):
-                w2d = w_all[k, :, :]
-                if detrend:
-                    w2d = w2d - w2d.mean()
-                w2d = w2d * window2d
-
-                # Compute 2D Fourier transform normalized into power spectral density units
-                W = np.fft.fftshift(np.fft.fft2(w2d)) / (nx * ny)
-                P2d = (np.abs(W) ** 2) * (nx * dx_m) * (ny * dx_m)
-
-                # Azimuthal average to 1D
-                psd1d = np.zeros(len(k_rad))
-                count = np.zeros(len(k_rad), dtype=int)
-                np.add.at(
-                    psd1d, digitized_indices[valid_indices], P2d.ravel()[valid_indices]
-                )
-                np.add.at(count, digitized_indices[valid_indices], 1)
-                count = np.where(count == 0, 1, count)
-                psd1d /= count
-
-                psd_stack.append(psd1d)
-
-            psd_mean = np.mean(psd_stack, axis=0)
-
-            # Filter k > 0 to avoid division by zero at the infinite scale
-            nonzero = k_rad > 0
-            k_plot = k_rad[nonzero]
-            psd_plot = psd_mean[nonzero]
-
-            # Smooth and identify peak wavelength scale
-            wavelength_km = (1.0 / k_plot) / 1000.0
-            psd_smooth = running_mean(psd_plot, nsmooth)
+            wavelength_km, psd_smooth, _, time_val = compute_frame_psd(
+                fname, var, grid.pbl_mask, spectrum, detrend=detrend, nsmooth=nsmooth
+            )
 
             idx_max = np.argmax(psd_smooth)
             lambda_max_m = wavelength_km[idx_max] * 1000.0
