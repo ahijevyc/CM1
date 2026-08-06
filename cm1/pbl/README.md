@@ -121,12 +121,12 @@ configure_profile_axes(ax)
 add_resolved_and_sgs_lines(ax, uw_tot, uw_sgs, zw_km, color="magenta", label="My New Run")
 ```
 
-## How CM1's cm1_sas_stats.nc was actually produced
+## How CM1's dodomaindiag=.true varnames map to SAS stats
 
-Ned's cross-model variable names map directly onto CM1's native
+The SAS analysis's cross-model variable names map directly onto CM1's native
 `dodomaindiag` names:
 
-| Ned's name | CM1's native name | What it is |
+| SAS name | CM1 name | What it is |
 |---|---|---|
 | `t` | `th` | potential temperature, domain-mean profile |
 | `q` | `qv` | water vapor mixing ratio, domain-mean profile |
@@ -138,11 +138,11 @@ Ned's cross-model variable names map directly onto CM1's native
 | `uw_r` / `vw_r` / `wt_r` / `wq_r` | `upwp`(`ufr`) / `vpwp`(`vfr`) / `thfr` / `qvfr` | resolved-scale vertical flux: ⟨u'w'⟩, ⟨v'w'⟩, ⟨w'θ'⟩, ⟨w'qv'⟩ |
 | `uw_s` / `vw_s` / `wt_s` / `wq_s` | `ufs` / `vfs` / `thfs` / `qvfs` | subgrid-scale (parameterized) vertical flux of momentum, θ, and water vapor |
 
-"Resolved" = computed directly from the simulated flow (Reynolds/Favre
+"Resolved" = computed directly from the simulated flow (Reynolds
 deviations from the horizontal mean); "subgrid" = whatever the turbulence
 closure parameterizes as unresolved. Every CM1 field above also has an
 `fd`/diffusion counterpart (e.g. `thfd`) capturing numerical diffusion, which
-has no place in Ned's resolved/subgrid split — worth noting if totals don't
+has no place in SAS's resolved/subgrid split — worth noting if totals don't
 balance exactly.
 
 ## Known gaps / things to double-check
