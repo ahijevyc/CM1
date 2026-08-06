@@ -121,7 +121,7 @@ configure_profile_axes(ax)
 add_resolved_and_sgs_lines(ax, uw_tot, uw_sgs, zw_km, color="magenta", label="My New Run")
 ```
 
-## How CM1's dodomaindiag=.true varnames map to SAS stats
+## How CM1's `dodomaindiag=.true` varnames map to SAS stats
 
 The SAS analysis's cross-model variable names map directly onto CM1's native
 `dodomaindiag` names:
@@ -135,7 +135,7 @@ The SAS analysis's cross-model variable names map directly onto CM1's native
 | `tke_r` | `rtke` | resolved-scale turbulence kinetic energy |
 | `tke_s` | `stke` | subgrid-scale turbulence kinetic energy |
 | `tt_r` / `qq_r` | `thvarr` / `qvvarr` | resolved-scale variance of potential temperature / water vapor |
-| `uw_r` / `vw_r` / `wt_r` / `wq_r` | `upwp`(`ufr`) / `vpwp`(`vfr`) / `thfr` / `qvfr` | resolved-scale vertical flux: ⟨u'w'⟩, ⟨v'w'⟩, ⟨w'θ'⟩, ⟨w'qv'⟩ |
+| `uw_r` / `vw_r` / `wt_r` / `wq_r` | `ufr` / `vfr` / `thfr` / `qvfr` | resolved-scale vertical flux: ⟨u'w'⟩, ⟨v'w'⟩, ⟨w'θ'⟩, ⟨w'qv'⟩ |
 | `uw_s` / `vw_s` / `wt_s` / `wq_s` | `ufs` / `vfs` / `thfs` / `qvfs` | subgrid-scale (parameterized) vertical flux of momentum, θ, and water vapor |
 
 "Resolved" = computed directly from the simulated flow (Reynolds
