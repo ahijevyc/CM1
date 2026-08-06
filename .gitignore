@@ -6,6 +6,7 @@ build/
 cm1.exe
 run/*.ctl
 run/*.dat
+run/*.nc
 run/onefile.F
 run_*/
 src/*.f90

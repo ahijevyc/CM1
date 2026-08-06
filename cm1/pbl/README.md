@@ -1,12 +1,11 @@
 # PBL Analysis Toolkit
 
-This is a refactored, reusable version of Ned Patton's boundary-layer analysis
-scripts, originally shared in [`cm1/shared_by_patton/src/`](../shared_by_patton/src/).
-Those scripts are long, self-contained programs wired together with
-`exec(open('other_script.py').read())` calls, with axis styling, plotting, and
-statistics helpers copy-pasted into each one. This package pulls the reusable
-pieces out into plain functions, organized by what they do rather than which
-one-off script they originally lived in.
+A reusable version of the boundary-layer analysis scripts originally shared
+by Ned Patton in [`cm1/shared_by_patton/src/`](../shared_by_patton/src/).
+Those scripts each ran standalone, pulling in shared logic via
+`exec(open('other_script.py').read())` calls. This package extracts that
+logic into plain, importable functions, organized by what they do rather
+than which script they came from.
 
 ## Layout
 
@@ -32,10 +31,10 @@ pbl/
 
 Two standalone command-line tools, unrelated to the Ned-script port described
 below, for looking at horizontal power spectra of raw CM1 3-D output (e.g.
-`winterp`). Both are built on the PSD/azimuthal-averaging logic in
-`spectra_core.py`, but unlike `analysis/`, `plotting/`, and `data/`, they are
-full runnable scripts (argument parsing, a `__main__` block), not importable
-function libraries — see the note below about that distinction.
+`winterp`). Both build on the PSD/azimuthal-averaging logic in
+`spectra_core.py`, but unlike `analysis/`, `plotting/`, and `data/`, they're
+runnable scripts (argument parsing, a `__main__` block), not importable
+libraries.
 
 - `cm1_w_spectra_animated.py` — interactive GUI to scrub through a CM1 output
   sequence and watch the horizontal spectrum evolve, with Play/Pause/speed
@@ -50,7 +49,7 @@ function libraries — see the note below about that distinction.
 - `combined_max_psd.py` — batch-compares the dominant spectral scale over time
   across several experiment directories on one plot. Currently hardcoded to
   three PBL-height sensitivity runs in its `experiments` dict — edit that for
-  your own runs.
+  other runs.
 
   ```
   python combined_max_psd.py --pbl-bot 2.0 --pbl-top 5.0 --var winterp
@@ -68,17 +67,18 @@ function libraries — see the note below about that distinction.
 | `import_packages.py` | no equivalent — each module imports only what it needs |
 | `read_les_cm1.py` and friends | not yet ported; see "Known gaps" below |
 
-**Important difference from the originals:** these are building-block functions
-(style an axes, draw one line, add one contour set), not end-to-end scripts. You
-still assemble the figure — open the dataset, pull out the arrays you need, loop
-over models/times, call the helpers. See `cm1/tests/test_profiles.py` and
-`cm1/tests/test_hovmoeller.py` for worked examples of exactly that.
+**Important difference from the originals:** these are building-block
+functions (style an axes, draw one line, add one contour set), not
+end-to-end scripts. Assembling the actual figure — opening the dataset,
+pulling out the needed arrays, looping over models/times — is left to the
+caller. See `cm1/tests/test_profiles.py` and `cm1/tests/test_hovmoeller.py`
+for worked examples.
 
-## Verifying it reproduces your plots
+## Verifying against the reference plots
 
 `cm1/tests/` has three scripts that load real SAS-campaign data and call the
-refactored functions, so you can compare their output directly against your own
-reference PDFs in `shared_by_patton/plots/`:
+refactored functions, producing output that can be compared directly against
+the reference PDFs in `shared_by_patton/plots/`:
 
 ```
 python cm1/tests/test_profiles.py  # -> cm1_test_flux_profiles.png
@@ -89,17 +89,17 @@ python cm1/tests/test_hovmoeller.py # -> cm1_test_hovmoeller_CM1.png, cm1_test_h
 python cm1/tests/test_pbl.py       # -> cm1_sas_uu_spec2d.png (spectra sanity check)
 ```
 
-These read from `cm1/shared_by_patton/data/les/{cm1,ncar-les,mpas}/` — the CM1
-files are the ones you originally shared; the NCAR-LES and MPAS files are
+These read from `cm1/shared_by_patton/data/les/{cm1,ncar-les,mpas}/` — the
+CM1 files are the ones Ned originally shared; the NCAR-LES and MPAS files are
 symlinks into the SAS campaign archive
-(`/glade/campaign/mmm/dpm/patton/data/reinvest/data/sas/les/`), recovered since
-they weren't included in what got shared originally. Any environment with
-`netCDF4`, `xarray`, `pandas`, and `matplotlib` will run these.
+(`/glade/campaign/mmm/dpm/patton/data/reinvest/data/sas/les/`), recovered
+since they weren't included originally. Any environment with `netCDF4`,
+`xarray`, `pandas`, and `matplotlib` will run these.
 
 ## Using it on new data
 
-The pattern is the same regardless of which model produced the data — pull the
-arrays you need out with `xarray`, then hand them to the plotting helpers:
+The pattern is the same regardless of which model produced the data — pull
+the needed arrays out with `xarray`, then hand them to the plotting helpers:
 
 ```python
 import numpy as np
@@ -121,18 +121,45 @@ configure_profile_axes(ax)
 add_resolved_and_sgs_lines(ax, uw_tot, uw_sgs, zw_km, color="magenta", label="My New Run")
 ```
 
+## How CM1's cm1_sas_stats.nc was actually produced
+
+Ned's cross-model variable names map directly onto CM1's native
+`dodomaindiag` names:
+
+| Ned's name | CM1's native name | What it is |
+|---|---|---|
+| `t` | `th` | potential temperature, domain-mean profile |
+| `q` | `qv` | water vapor mixing ratio, domain-mean profile |
+| `u` / `v` | `u` / `v` | horizontal wind components, domain-mean profile |
+| `uu_r` / `vv_r` / `ww_r` | `upup` / `vpvp` / `wpwp` | resolved-scale momentum variance: ⟨u'u'⟩, ⟨v'v'⟩, ⟨w'w'⟩ |
+| `tke_r` | `rtke` | resolved-scale turbulence kinetic energy |
+| `tke_s` | `stke` | subgrid-scale turbulence kinetic energy |
+| `tt_r` / `qq_r` | `thvarr` / `qvvarr` | resolved-scale variance of potential temperature / water vapor |
+| `uw_r` / `vw_r` / `wt_r` / `wq_r` | `upwp`(`ufr`) / `vpwp`(`vfr`) / `thfr` / `qvfr` | resolved-scale vertical flux: ⟨u'w'⟩, ⟨v'w'⟩, ⟨w'θ'⟩, ⟨w'qv'⟩ |
+| `uw_s` / `vw_s` / `wt_s` / `wq_s` | `ufs` / `vfs` / `thfs` / `qvfs` | subgrid-scale (parameterized) vertical flux of momentum, θ, and water vapor |
+
+"Resolved" = computed directly from the simulated flow (Reynolds/Favre
+deviations from the horizontal mean); "subgrid" = whatever the turbulence
+closure parameterizes as unresolved. Every CM1 field above also has an
+`fd`/diffusion counterpart (e.g. `thfd`) capturing numerical diffusion, which
+has no place in Ned's resolved/subgrid split — worth noting if totals don't
+balance exactly.
+
 ## Known gaps / things to double-check
 
 - Only CM1 and NCAR-LES have been run end-to-end against real data. WRF-LES,
   DALES, MicroHH, FastEddy (stored as a pickle, not netCDF), MPAS, and the SCM
   datasets exist under `shared_by_patton/data/` but nobody has written the
   per-model extraction code for them yet in this package.
-- There's no built-in "one row per model" layout like your stacked Hovmoeller
-  comparison — `test_hovmoeller.py` shows the loop-and-call-per-model pattern
-  you'd use to build one.
+- There's no built-in "one row per model" layout like the stacked Hovmoeller
+  comparison in `met_hov+prof.all.pdf` — `test_hovmoeller.py` shows the
+  loop-and-call-per-model pattern needed to build one.
 - `analysis/definitions.py`, `plotting/timeseries.py`, and `data/readers.py`
   haven't been exercised against real data yet — only `profiles.py`,
   `hovmoeller.py`, and `spectra.py` have. `analysis/utils.py`'s statistics
   functions were checked against synthetic inputs to confirm they match the
   original implementations exactly, but not run through a full plotting
   pipeline.
+- No helper yet to build a `cm1_sas_stats.nc`-style file from a fresh
+  `dodomaindiag` run (concatenate the per-timestep `cm1out_diag_*.nc` files
+  along time, rename variables per the table above).
